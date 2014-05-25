@@ -3,6 +3,8 @@
 *.ko
 *.obj
 *.elf
+*.d
+*.map
 
 # Libraries
 *.lib
@@ -21,3 +23,6 @@
 *.i*86
 *.x86_64
 *.hex
+
+# vim swapfiles
+*.swp
