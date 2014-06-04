@@ -21,6 +21,8 @@
 #include <libopencm3/stm32/adc.h>
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/dma.h>
+#include <libopencm3/cm3/nvic.h>
 
 #include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
@@ -47,40 +49,87 @@
 #define LD6 GPIOE, GPIO15
 
 
-static volatile uint8_t usb_did_first_read = 0;
 static volatile uint8_t usb_ready_to_send = 0;
+static usbd_device *usb_device;
+
+static uint16_t adc_samples[32];
+
+static uint8_t x[4] = {'h','i','\r','\n'};
+
+void dma1_channel1_isr(void) {
+
+    usbd_ep_write_packet(usb_device,0x82,&(x[0]), 4);
+    usbd_ep_write_packet(usb_device,0x82, &(adc_samples[0]), 64);
+    gpio_port_write(GPIOE, 0xA500);
+
+    if ( dma_get_interrupt_flag(DMA1, 1, DMA_TCIF) != 0 ) {
+        dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
+    
+        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 64);
+        
+        // reset DMA so we're ready to transmit again
+    }
+}
+
+void adc1_2_isr(void) {
+    
+    //usbd_ep_write_packet(usb_device,0x82, x, 4);
+    if ( adc_eoc(ADC1) != 0 ) {
+        gpio_port_write(GPIOE, 0xFF00);
+        
+        //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 64);
+        // reset DMA so we're ready to transmit again
+    }
+}
 
 
 
 static void adc_setup(void)
 {
+    rcc_periph_clock_enable(RCC_DMA1);
+
+    DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_16BIT |
+        DMA_CCR_PSIZE_16BIT | DMA_CCR_MINC | DMA_CCR_TCIE;
+
+    DMA1_CNDTR1 = 32;
+    DMA1_CPAR1 = (uint32_t) &(ADC1_DR);
+    DMA1_CMAR1 = (uint32_t) &(adc_samples[0]);
+
+    nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
+
+    DMA1_CCR1 |= DMA_CCR_EN;
+
 	//ADC
 	rcc_periph_clock_enable(RCC_ADC12);
 	rcc_periph_clock_enable(RCC_GPIOA);
 	//ADC
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);
-	//adc_off(ADC1);
-	adc_set_clk_prescale(ADC_CCR_CKMODE_DIV2);
-	adc_set_single_conversion_mode(ADC1);
-	adc_disable_external_trigger_regular(ADC1);
-	adc_set_right_aligned(ADC1);
-	/* We want to read the temperature sensor, so we have to enable it. */
-	adc_enable_temperature_sensor();
-	adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR1_SMP_61DOT5CYC);
-	uint8_t channel_array[16];
-	//channel_array[0]=16; // Vts (Internal temperature sensor
-	channel_array[0]=1; //ADC1_IN1 (PA0)
+
+    ADC1_CR |= ADC_CR_ADDIS;
+    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN;
+    ADC1_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 3;
+
+    ADC1_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ) |
+                ( ( 1 ) << ADC_SQR1_L_LSB );
+
+    ADC_CCR = ADC_CCR_CKMODE_DIV1;
+
+    //ADC1_IER = ADC_IER_EOCIE;
+
+    // start voltage reg
+    ADC1_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
+    ADC1_CR = ADC_CR_ADVREGEN_ENABLE;
     
-	adc_set_regular_sequence(ADC1, 1, channel_array);
-	adc_set_resolution(ADC1, ADC_CFGR_RES_12_BIT);
-	adc_power_on(ADC1);
+    // power on ADC
+    ADC1_CR |= ADC_CR_ADEN;
+
+    //nvic_enable_irq(NVIC_ADC1_2_IRQ);
     
 	/* Wait for ADC starting up. */
 	int i;
 	for (i = 0; i < 800000; i++)
 		__asm__("nop");
-    
 }
 
 
@@ -94,6 +143,7 @@ static void gpio_setup(void)
 }
 
 
+#if 0
 static void my_usb_print_int(usbd_device *usbd_dev, int16_t value)
 {
     int8_t i = 0;
@@ -121,6 +171,7 @@ static void my_usb_print_int(usbd_device *usbd_dev, int16_t value)
     
     usbd_ep_write_packet(usbd_dev,0x82, buffer, len);
 }
+#endif
 
 
 
@@ -312,8 +363,13 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 	char buf[64];
 	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
 
+    ADC1_CR |= ADC_CR_ADSTART;
 	if (len) {
-        usb_did_first_read = 1;
+        ADC1_CR |= ADC_CR_ADSTART;
+        // ((uint32_t *) &(buf[0]))[0] = ADC1_CR;
+        //len = 4;
+        //buf[0] = 'x';
+        //len = 1;
 		//usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
 		//buf[len] = 0;
 	}
@@ -373,44 +429,26 @@ int main(void)
 {
     rcc_clock_setup_hsi(&hsi_8mhz[CLOCK_48MHZ]);
 
-#if 1
-    uint16_t temp;
     gpio_setup();
 	adc_setup();
-    //----------------
-#endif
 
 	int i;
 
-	usbd_device *usbd_dev;
+	//usbd_device *usbd_dev;
 	//rcc_clock_setup_hsi(&hsi_8mhz[CLOCK_48MHZ]);
 	usb_setup();
 
-	usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,
+	usb_device = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,
 			3, usbd_control_buffer, sizeof(usbd_control_buffer));
-	usbd_register_set_config_callback(usbd_dev, cdcacm_set_config);
+	usbd_register_set_config_callback(usb_device, cdcacm_set_config);
 
 	for (i = 0; i < 0x800000; i++)
 		__asm__("nop");
 
-    while ( usb_did_first_read == 0 ) {
-		usbd_poll(usbd_dev);
-    }
-
-    usb_ready_to_send = 1;
+    gpio_port_write(GPIOE, 0x1100);
 
 	while (1){
-		usbd_poll(usbd_dev);
-
-        adc_start_conversion_regular(ADC1);
-        while (!(adc_eoc(ADC1)));
-        temp=adc_read_regular(ADC1);
-        gpio_port_write(GPIOE, temp << 4);
-
-        if ( usb_ready_to_send == 1 ) {
-            usb_ready_to_send = 0;
-            my_usb_print_int(usbd_dev, temp);
-        }
+		usbd_poll(usb_device);
     }
     
 }
