@@ -54,18 +54,21 @@ static usbd_device *usb_device;
 
 static uint16_t adc_samples[32];
 
-static uint8_t x[4] = {'h','i','\r','\n'};
+static uint8_t x[5] = {'h','i','\r','\n', 0};
 
 void dma1_channel1_isr(void) {
 
-    usbd_ep_write_packet(usb_device,0x82,&(x[0]), 4);
-    usbd_ep_write_packet(usb_device,0x82, &(adc_samples[0]), 64);
-    gpio_port_write(GPIOE, 0xA500);
+    //usbd_ep_write_packet(usb_device,0x82,&(x[0]), 4);
+    //usbd_ep_write_packet(usb_device,0x82, &(adc_samples[0]), 64);
+    //gpio_port_write(GPIOE, 0xA500);
 
     if ( dma_get_interrupt_flag(DMA1, 1, DMA_TCIF) != 0 ) {
         dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
-    
-        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 64);
+        gpio_port_write(GPIOE, 0xFF00);
+        //usbd_ep_write_packet(usb_device,0x82,&(x[0]), 4);
+        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
+   //     ((uint32_t *) x)[0] = DMA1_CCR1;
+        //usbd_ep_write_packet(usb_device,0x82, x, 4);
         
         // reset DMA so we're ready to transmit again
     }
@@ -103,15 +106,20 @@ static void adc_setup(void)
 	rcc_periph_clock_enable(RCC_ADC12);
 	rcc_periph_clock_enable(RCC_GPIOA);
 	//ADC
-	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
+	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);
 
-    ADC1_CR |= ADC_CR_ADDIS;
+    if ((ADC1_CR & ADC_CR_ADEN) != 0 ){
+        ADC1_CR |= ADC_CR_ADDIS;
+        while (ADC1_CR & ADC_CR_ADDIS){}
+    }
+
     ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN;
     ADC1_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 3;
 
-    ADC1_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ) |
-                ( ( 1 ) << ADC_SQR1_L_LSB );
+    // set ADC to convert on PA1 (ADC1_IN2)
+    // don't send negative shit into it
+    ADC1_SQR1 = ( ( 2 ) << ADC_SQR1_SQ1_LSB );
 
     ADC_CCR = ADC_CCR_CKMODE_DIV1;
 
@@ -121,15 +129,24 @@ static void adc_setup(void)
     ADC1_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
     ADC1_CR = ADC_CR_ADVREGEN_ENABLE;
     
+    ADC1_ISR = ADC_ISR_ADRDY; //ADC is not ready
+
     // power on ADC
     ADC1_CR |= ADC_CR_ADEN;
 
     //nvic_enable_irq(NVIC_ADC1_2_IRQ);
-    
+
 	/* Wait for ADC starting up. */
-	int i;
+    
+    while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
+    ADC1_ISR = ADC_ISR_ADRDY;
+    
+    
+	/*
+    int i;
 	for (i = 0; i < 800000; i++)
 		__asm__("nop");
+     */
 }
 
 
