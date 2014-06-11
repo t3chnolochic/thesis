@@ -56,8 +56,8 @@ static usbd_device *usb_device;
 
 static uint8_t state;
 static uint16_t leds;
-static uint8_t DMA_l = 100;
-static uint16_t adc_samples[100*62/2];
+static uint8_t DMA_l = 60;
+static uint16_t adc_samples[60*62/2];
 static uint8_t x[5] = {'h','i','\r','\n', 0};
 
 void dma1_channel1_isr(void) {
@@ -96,52 +96,57 @@ void adc1_2_isr(void) {
     //usbd_ep_write_packet(usb_device,0x82, x, 4);
     if ( adc_eoc(ADC1) != 0 ) {
         //gpio_port_write(GPIOE, 0xFF00);
-        leds = leds+0x0100;
-        gpio_port_write(GPIOE, leds);
+        //leds = leds+0x0100;
+        //gpio_port_write(GPIOE, leds);
         //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 64);
         // reset DMA so we're ready to transmit again
     }
 }
 
+static void dma_setup(void){
+    rcc_periph_clock_enable(RCC_DMA1);
+    
+    DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_16BIT |
+    DMA_CCR_PSIZE_16BIT | DMA_CCR_MINC | DMA_CCR_TCIE;
+    
+    DMA1_CNDTR1 = (DMA_l*62)/2;
+    DMA1_CPAR1 = (uint32_t) &(ADC1_DR);
+    DMA1_CMAR1 = (uint32_t) &(adc_samples[0]);
+    
+    nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
+    
+    DMA1_CCR1 |= DMA_CCR_EN;
+}
 
 
 static void adc_setup(void)
 {
-    rcc_periph_clock_enable(RCC_DMA1);
-
-    DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_16BIT |
-        DMA_CCR_PSIZE_16BIT | DMA_CCR_MINC | DMA_CCR_TCIE;
-
-    DMA1_CNDTR1 = (DMA_l*62)/2;
-    DMA1_CPAR1 = (uint32_t) &(ADC1_DR);
-    DMA1_CMAR1 = (uint32_t) &(adc_samples[0]);
-
-    nvic_enable_irq(NVIC_DMA1_CHANNEL1_IRQ);
-
-    DMA1_CCR1 |= DMA_CCR_EN;
-
 	//ADC
 	rcc_periph_clock_enable(RCC_ADC12);
 	rcc_periph_clock_enable(RCC_GPIOA);
+    rcc_periph_clock_enable(RCC_GPIOF);
 	//ADC
-	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
-	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);
+	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); //pa0
+	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1); //pa1
+    gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2); //pa2
+    gpio_mode_setup(GPIOF, GPIO_MODE_INPUT, GPIO_PUPD_PULLUP , GPIO4); //f4
 
     if ((ADC1_CR & ADC_CR_ADEN) != 0 ){
         ADC1_CR |= ADC_CR_ADDIS;
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
 
-    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4;
+    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //CONTINOUS MODE
+    //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE
     ADC1_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 3;
 
-    // set ADC to convert on PA1 (ADC1_IN2)
+    // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it
     ADC1_SQR1 = ( ( 3 ) << ADC_SQR1_SQ1_LSB ); //PA2
 
     ADC_CCR = ADC_CCR_CKMODE_DIV1;
 
-    //ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
+    ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
 
     // start voltage reg
     
@@ -184,18 +189,28 @@ static void adc_setup(void)
 static void timer_setup(void) {
     leds = 0x5A00;
     rcc_periph_clock_enable(RCC_TIM3);
-    //nvic_enable_irq(NVIC_TIM3_IRQ); //TIMER ISR
     
-    TIM3_CR1 = TIM_CR1_CKD_CK_INT | !TIM_CR1_ARPE | TIM_CR1_DIR_UP | TIM_CR1_OPM | !TIM_CR1_URS | !TIM_CR1_UDIS | !TIM_CR1_CEN;
+    //TIM3_CR1 = TIM_CR1_CKD_CK_INT | !TIM_CR1_ARPE | TIM_CR1_DIR_UP | TIM_CR1_OPM | !TIM_CR1_URS | !TIM_CR1_UDIS | !TIM_CR1_CEN; one shot mode
+    TIM3_CR1 = TIM_CR1_CKD_CK_INT | !TIM_CR1_ARPE | TIM_CR1_DIR_UP | !TIM_CR1_URS | !TIM_CR1_UDIS | !TIM_CR1_CEN;
+    
     TIM3_CR2 = (!TIM_CR2_TI1S) | TIM_CR2_MMS_COMPARE_OC1REF | (!TIM_CR2_CCDS);
-    TIM3_SMCR = TIM_SMCR_ETP | !TIM_SMCR_ECE | TIM_SMCR_ETPS_OFF | TIM_SMCR_ETF_OFF | !TIM_SMCR_MSM | TIM_SMCR_TS_ETRF | (0x0 << 3) | TIM_SMCR_SMS_TM;
-    //TIM3_DIER = TIM_DIER_CC1IE; //TIMER ISR
+    //TIM3_SMCR = TIM_SMCR_ETP | !TIM_SMCR_ECE | TIM_SMCR_ETPS_OFF | TIM_SMCR_ETF_OFF | !TIM_SMCR_MSM | TIM_SMCR_TS_ETRF | (0x0 << 3) | TIM_SMCR_SMS_TM; trigger mode
+    TIM3_SMCR = TIM_SMCR_ETP | !TIM_SMCR_ECE | TIM_SMCR_ETPS_OFF | TIM_SMCR_ETF_OFF | !TIM_SMCR_MSM | TIM_SMCR_TS_ETRF | (0x0 << 3);
+    
+    /* TIM3_SMCR Bit 3
+     OCCS: OCREF clear selection
+     This bit is used to select the OCREF clear source
+     0: OCREF_CLR_INT is connected to the OCREF_CLR input 
+     1: OCREF_CLR_INT is connected to ETRF
+     */
+    nvic_enable_irq(NVIC_TIM3_IRQ); //TIMER ISR
+    TIM3_DIER = TIM_DIER_CC1IE; //TIMER ISR
     TIM3_CCMR1 = TIM_CCMR1_OC1M_PWM2;
     TIM3_CCER = 0;
     TIM3_CNT = 0;
     TIM3_PSC = 0;
-    TIM3_ARR = 0xFFFF;
-    TIM3_CCR1 = 0x8000;
+    TIM3_ARR = 100; // 0xFFFF;
+    TIM3_CCR1 = 50; //0x8000;
     //OCCS flag not included in libopen
     
 }
@@ -456,6 +471,7 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep)
 
 	char buf[64];
 	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+    TIM3_CR1 |= TIM_CR1_CEN;
     /*
     
     ADC1_CR |= ADC_CR_ADSTART;
@@ -543,6 +559,7 @@ int main(void)
 
     gpio_setup();
 	adc_setup();
+    dma_setup();
     timer_setup();
 
 	int i;

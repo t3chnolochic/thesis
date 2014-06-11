@@ -60,6 +60,9 @@ static void adc_setup(void)
 	//ADC
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0);
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1);
+    gpio_mode_setup(GPIOA, GPIO_MODE_INPUT, GPIO_PUPD_NONE, GPIO2);
+    //ADC1_SQR1 = ( ( 2 ) << ADC_SQR1_SQ1_LSB );
+    
 	//adc_off(ADC1);
 	adc_set_clk_prescale(ADC_CCR_CKMODE_DIV2);
 	adc_set_single_conversion_mode(ADC1);
@@ -70,7 +73,7 @@ static void adc_setup(void)
 	adc_set_sample_time_on_all_channels(ADC1, ADC_SMPR1_SMP_61DOT5CYC);
 	uint8_t channel_array[16];
 	//channel_array[0]=16; // Vts (Internal temperature sensor
-	channel_array[0]=1; //ADC1_IN1 (PA0)
+	channel_array[0]=2; //ADC1_IN1 (PA0)
     
 	adc_set_regular_sequence(ADC1, 1, channel_array);
 	adc_set_resolution(ADC1, ADC_CFGR_RES_12_BIT);
