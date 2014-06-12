@@ -54,7 +54,7 @@ static volatile uint8_t usb_ready_to_send = 0;
 static usbd_device *usb_device;
 
 
-#define ADC_SAMPLES   (62*20)
+#define ADC_SAMPLES   (62*200)
 #define ADC_BYTES     (ADC_SAMPLES*1)
 
 static uint8_t adc_samples[ADC_SAMPLES];
@@ -86,26 +86,33 @@ void dma1_channel1_isr(void) {
     }
 }
 
-#if 1
 void adc1_2_isr(void) {
+    
+ 
+
     if ( adc_eoc(ADC1) != 0 ) {
-        if (adc_state == (ADC_SAMPLES)-1) {
-            gpio_port_write(GPIOE, 0xA500);
-            adc_samples[adc_state] = ADC1_DR;
-            adc_state = 0;
-            state = 0;
-            usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
-            //ADC1_CR |= ADC_CR_ADSTP;
-            ADC1_CR |= ADC_CR_ADDIS;
-            }
         
-        else {
-            adc_samples[adc_state] = ADC1_DR;
-            adc_state++;
-        }
+        #if 0 //use this to avoid DMA use ADC interrupt as pseudo-DMA
+            if (adc_state == (ADC_SAMPLES)-1) {
+                gpio_port_write(GPIOE, 0xA500);
+                adc_samples[adc_state] = ADC1_DR;
+                adc_state = 0;
+                state = 0;
+                usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
+                //ADC1_CR |= ADC_CR_ADSTP; ADSTP DOESN'T WORK SO DON'T USE THIS
+                ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO PAUSE ADC
+            }
+            
+            else {
+                adc_samples[adc_state] = ADC1_DR;
+                adc_state++;
+            }
+         #endif
     }
+   
 }
-#endif
+
+
 
 
 // USB CALLBACKS
@@ -145,7 +152,6 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         DMA1_CNDTR1 = ADC_SAMPLES;
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh. 
         TIM3_SMCR |= TIM_SMCR_SMS_TM;
-        
         ADC1_CR |= ADC_CR_ADSTART;
     } else {
         usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*state]), 62);
@@ -185,8 +191,8 @@ static void timer_setup(void) {
 
 static void dma_setup(void) {
     rcc_periph_clock_enable(RCC_DMA1);
-    
-    DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_8BIT | DMA_CCR_PSIZE_16BIT |
+
+    DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_8BIT | DMA_CCR_PSIZE_8BIT |
         DMA_CCR_MINC | DMA_CCR_TCIE;
     
     DMA1_CNDTR1 = ADC_SAMPLES;
@@ -207,17 +213,17 @@ static void adc_setup(void) {
 	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); //pa0
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1); //pa1
     gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2); //pa2
-    gpio_mode_setup(GPIOF, GPIO_MODE_INPUT, GPIO_PUPD_PULLUP, GPIO4); //f4
+    gpio_mode_setup(GPIOF, GPIO_MODE_ANALOG, GPIO_PUPD_PULLUP, GPIO4); //f4
 
-    if ((ADC1_CR & ADC_CR_ADEN) != 0 ){
+    if ((ADC1_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC read yet. wait until ADDIS is done
         ADC1_CR |= ADC_CR_ADDIS;
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
 
-    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_EXTEN_RISING_EDGE |
-        ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE
-    // ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE
-    //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE
+    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |
+        ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE with DMA
+    // ADC1_CFGR = ADC_CFGR_CONT  | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE without DMA
+    //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE WITH DMA
     ADC1_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 3;
 
     // set ADC to convert on PA2 (ADC1_IN3)
@@ -482,7 +488,7 @@ int main(void) {
 
     gpio_setup();
 	adc_setup();
-    //dma_setup();
+    dma_setup();
     timer_setup();
 
 	int i;
