@@ -59,12 +59,13 @@ static usbd_device *usb_device;
 
 static uint8_t adc_samples[ADC_SAMPLES];
 
-static uint16_t state;
-static uint16_t adc_state;
-static uint16_t leds;
+static uint16_t sample_chunk_per_frame =0;
+static uint16_t adc_state = 0;
+static uint16_t leds = 0;
 
 // number of phase offsets to run through
 static uint8_t  num_frames = 1; // 1 to 24
+static uint8_t  frame = 0;
 // number of samples to take for each frame
 static uint16_t num_samples_per_frame = ADC_SAMPLES;
 
@@ -83,15 +84,40 @@ void tim3_isr(void) {
 
 void dma1_channel1_isr(void) {
     if ( dma_get_interrupt_flag(DMA1, 1, DMA_TCIF) != 0 ) {
-        state = 0;
-        //gpio_port_write(GPIOE, 0xA500);
-        dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
-        //gpio_port_write(GPIOE, 0xFF00);
-        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
-        // reset DMA so we're ready to transmit again
         
-        //ADC1_CR |= ADC_CR_ADSTP; //ADSTP DOESN'T WORK SO DON'T USE THIS
-        ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO STOP ADC
+        ADC1_CR |= ADC_CR_ADDIS;
+        frame++;
+        dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
+        
+        if (frame < num_frames) {
+            DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
+            DMA1_CMAR1 = (uint32_t) &(adc_samples[frame*num_samples_per_frame]);
+            DMA1_CNDTR1 = num_samples_per_frame;
+            DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
+            
+            //TIM3_CCR1 = TIM3_CCR1 + 24/num_frames;  //unless equals num_frames or smaller
+            ADC1_CR |= ADC_CR_ADEN;
+            while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
+            ADC1_ISR = ADC_ISR_ADRDY;
+            ADC1_CR |= ADC_CR_ADSTART;
+        
+            TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
+        }
+        
+        else{
+            frame = 0;
+            sample_chunk_per_frame = 0;
+            usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
+            // reset DMA so we're ready to transmit again
+            
+            //ADC1_CR |= ADC_CR_ADSTP; //ADSTP DOESN'T WORK SO DON'T USE THIS
+            //ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO STOP ADC
+            
+        }
+        
+        
+        
+        
         
     }
 }
@@ -100,8 +126,8 @@ void adc1_2_isr(void) {
     
     if ( adc_eoc(ADC1) != 0 ) {
 
-        gpio_port_write(GPIOE, leds);
-        adc_samples[adc_state] = ADC1_DR;
+        //leds = leds+0x0100;
+        gpio_port_write(GPIOE, 0xFFFF);
         
         #if 0 //use this to avoid DMA use ADC interrupt as pseudo-DMA
             if (adc_state == (ADC_SAMPLES)-1) {
@@ -109,7 +135,7 @@ void adc1_2_isr(void) {
                 gpio_port_write(GPIOE, leds);
                 adc_samples[adc_state] = ADC1_DR;
                 adc_state = 0;
-                state = 0;
+                sample_chunk_per_frame = 0;
                 usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
                 //ADC1_CR |= ADC_CR_ADSTP; ADSTP DOESN'T WORK SO DON'T USE THIS
                 ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO PAUSE ADC
@@ -134,7 +160,7 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
 	(void)usbd_dev;
 
 	char buf[64];
-	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+	usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
     
     // TODO: phase adjustment setting
     num_frames = 1;
@@ -160,16 +186,19 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
 	(void)ep;
 	(void)usbd_dev;
 
-    state = state + 1;
+    sample_chunk_per_frame = sample_chunk_per_frame + 1;
     usb_ready_to_send = 1;
-
-    if (state == (ADC_BYTES/62)){
+    
+    if (sample_chunk_per_frame == (num_frames*num_samples_per_frame/62)){
         adc_state = 0;
-        state = 0;
+        sample_chunk_per_frame = 0;
         DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
         //gpio_port_write(GPIOE, 0xFF00);
-        DMA1_CNDTR1 = ADC_SAMPLES;
+        DMA1_CMAR1 = (uint32_t) &(adc_samples[0]);
+        DMA1_CNDTR1 = num_samples_per_frame;
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
+        
+        TIM3_CCR1 = 0x8000; //0x8000;
         
         ADC1_CR |= ADC_CR_ADEN;
         
@@ -181,8 +210,12 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         //TIM3_CR1 |= TIM_CR1_CEN;
         TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
     } else {
-        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*state]), 62);
+        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*sample_chunk_per_frame]), 62);
     }
+    
+    
+    
+    
 }
 
 
@@ -258,7 +291,7 @@ static void adc_setup(void) {
 
     ADC_CCR = ADC_CCR_CKMODE_DIV1;
 
-    //ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
+    ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
 
     // start voltage reg
     
@@ -277,7 +310,7 @@ static void adc_setup(void) {
     // power on ADC
     ADC1_CR |= ADC_CR_ADEN;
 
-    //nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
+    nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
 
 	/* Wait for ADC starting up. */
     while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
