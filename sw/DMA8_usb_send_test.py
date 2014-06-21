@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import csv
 import matplotlib.patches as mpatches
 
-gels = 5;
+gels = 4;
 frame_size = gels*62*100;
 bytes_per_sample = 1;
 

@@ -56,8 +56,8 @@ static usbd_device *usb_device;
 #define BUFF          (100)
 #define ADC_SAMPLES   (62*BUFF) //WE ARE ALL 8-BIT
 #define ADC_BYTES     (ADC_SAMPLES*1) //ALL 8-BIT WEEEEEE BECAUSE THIS USB CAN'T DO 12. WHY? IDK WHY. YOU'D THINK IT'D BE TWO BYTES BUT THE USB MESSES IT UP. WHY? IDK IDK IDK...
-#define GELS          (5)   //4
-#define TOT           (5) //24 - half 1MSPS, 40 - half 600kHz
+#define GELS          (4)   //4
+#define TOT           (8) //24 - half 1MSPS, 40 - half 600kHz
 
 static int sample_chunk_per_frame =0;
 static uint16_t adc_state = 0;
@@ -105,11 +105,11 @@ void dma1_channel1_isr(void) {
             ADC1_CR |= ADC_CR_ADSTART;
             
             //TIM3_CR1 |= !TIM_CR1_CEN;
-            TIM3_CCR1 = TIM3_CCR1 + 1; //TOT/num_frames;  //unless equals num_frames or smaller
+            TIM3_CCR1 = TIM3_CCR1 + TOT/GELS;  //unless equals num_frames or smaller
             //TIM3_CR1 |= TIM_CR1_CEN;
             TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
             
-            if (TIM3_CCR1 >= 0x8005){ //goes to 0x8008?
+            if (TIM3_CCR1 >= 0x8008){ //goes to 0x8008?
                 gpio_port_write(GPIOE, 0x1000);
             }
             
@@ -225,7 +225,7 @@ static void adc_setup(void) {
     ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE with DMA
     //ADC1_CFGR = ADC_CFGR_CONT  | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE without DMA
     //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE WITH DMA
-    ADC1_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 3; //9
+    ADC1_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 9; //9
 
     // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it

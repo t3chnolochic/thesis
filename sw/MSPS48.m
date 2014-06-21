@@ -10,7 +10,9 @@ r = snr(data0)
 %pwelch(data0(6000:8000));
 %subplot(2,1,2);
 %plot(data0(6000:8000));
-tot = 10; %7*3;
+
+tot = 60; %7*3;
+
 gels = 5;
 buff = 100;
 p = zeros(62*buff,gels);
