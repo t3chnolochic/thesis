@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import csv
 import matplotlib.patches as mpatches
 
-frame_size = 62*200;
+gels = 5;
+frame_size = gels*62*100;
 bytes_per_sample = 1;
 
 def tc8(val):
@@ -18,6 +19,17 @@ def tc8(val):
     else:
         out = val;
     return out;
+
+def csv_read(a):
+    x = []
+    x_final = []
+    x = open(a+".csv","U")
+    x_reader = csv.reader(x, delimiter=' ', quotechar='|')
+    for row in x_reader:
+        x_final.append(float(row[0]))
+    
+    return x_final
+
 
 
 if __name__ == "__main__":
@@ -35,9 +47,11 @@ if __name__ == "__main__":
 
         frame = [];
 
+
         for byte_idx in xrange(len(data)):
             val = ord(data[byte_idx]);
             frame.append(val);
+
 
         """
         for byte_idx in xrange(0, len(data), 2):
@@ -52,10 +66,16 @@ if __name__ == "__main__":
     
     usbfriend.close();
     
-    print frames
+    for x in range(len(frames)):
+        with open(str(x)+'data.csv', 'wb') as csvfile:
+            spamwriter = csv.writer(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            for y in range(len(frames[x])):
+                spamwriter.writerow([frames[x][y]])
+
+    #print frames
     
     plt.xlabel("Samples");
     plt.ylabel("Signal");
-    plt.plot(frames[0][:100]);
+    plt.plot(frames[0]);
     #plt.plot(frames[0][:100]);
     plt.show();
