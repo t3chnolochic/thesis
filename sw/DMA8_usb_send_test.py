@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import csv
 import matplotlib.patches as mpatches
 
-gels = 5;
-frame_size = gels*62*100;
+gels = 8;
+frame_size = gels*62*75;
 bytes_per_sample = 1;
 
 def tc8(val):
@@ -39,7 +39,9 @@ if __name__ == "__main__":
     
     #usbfriend.write('x');
     
-    for frame_idx in xrange(1):
+    for frame_idx in xrange(gels):
+        #usbfriend.write('x');
+        
         data = usbfriend.read(frame_size * bytes_per_sample);
         f = open('log.txt', 'w');
         f.write(data);
