@@ -56,8 +56,9 @@ static usbd_device *usb_device;
 #define BUFF          (75)
 #define ADC_SAMPLES   (62*BUFF) //WE ARE ALL 8-BIT
 #define ADC_BYTES     (ADC_SAMPLES*1) //ALL 8-BIT WEEEEEE BECAUSE THIS USB CAN'T DO 12. WHY? IDK WHY. YOU'D THINK IT'D BE TWO BYTES BUT THE USB MESSES IT UP. WHY? IDK IDK IDK...
-#define GELS          (8)   //4
-#define TOT           (8) //24 - half 1MSPS, 40 - half 600kHz 8
+
+#define GELS          (1)   //4, 8
+#define TOT           (8) //24 - half 1MSPS, 40 - half 600kHz 8 - half of 3MSPS but use 16
 
 static int sample_chunk_per_frame =0;
 static uint16_t adc_state = 0;
@@ -116,29 +117,26 @@ void dma1_channel1_isr(void) {
             ADC1_ISR = ADC_ISR_ADRDY;
             ADC1_CR |= ADC_CR_ADSTART;
             
-            //TIM3_CR1 &= ~TIM_CR1_CEN;
-            TIM3_CCR1 = TIM3_CCR1 + TOT/GELS;  //unless equals num_frames or smaller
             //TIM3_CNT = 0;
-            TIM3_CR1 |= TIM_CR1_CEN;
+            TIM3_CCR1 = TIM3_CCR1 + TOT/GELS;  //unless equals num_frames or smaller
             TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
-            
-            //TIM3_CR1 &= ~TIM_CR1_CEN;   //disable so next cds_rx can enable
-     
-        }
+            TIM3_CR1 |= TIM_CR1_OPM;
+            //TIM3_CR1 |= TIM_CR1_CEN;
+                    }
         
         else{
-
-            
+            //TIM3_CNT = 0;
+            TIM3_CCR1 = 0x0001; //TOT/GELS;  //unless equals num_frames or smaller
+            TIM3_SMCR |= TIM_SMCR_SMS_TM;
+            TIM3_CR1 |= TIM_CR1_OPM;
+            //TIM3_CR1 |= TIM_CR1_CEN;
             
             frame = 0;
             sample_chunk_per_frame = 0;
             usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
 
             //TIM3_CR1 &= ~TIM_CR1_CEN;
-            TIM3_CCR1 = 0x8001; //TOT/GELS;  //unless equals num_frames or smaller
-            //TIM3_CNT = 0;
-            TIM3_CR1 |= TIM_CR1_CEN;
-            TIM3_SMCR |= TIM_SMCR_SMS_TM;
+
             //ADC1_CR |= ADC_CR_ADSTART;
             // reset DMA so we're ready to transmit again
             //TIM3_CR1 &= ~TIM_CR1_CEN;   //disable so next cds_rx can enable
@@ -220,7 +218,7 @@ static void timer_setup(void) {
     TIM3_CNT = 0;
     TIM3_PSC = 0; //no prescale
     TIM3_ARR = 0xFFFF;
-    TIM3_CCR1 = 0x8001;
+    TIM3_CCR1 = 0x0001;
     //OCCS flag not included in libopen
     
 }
@@ -249,18 +247,19 @@ static void adc_setup(void) {
 	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); //pa0 //dead
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1); //pa1
     gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2); //pa2
-    gpio_mode_setup(GPIOF, GPIO_MODE_ANALOG, GPIO_PUPD_PULLUP, GPIO4); //f4
+    gpio_mode_setup(GPIOF, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO4); //f4
 
     if ((ADC1_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC read yet. wait until ADDIS is done
         ADC1_CR |= ADC_CR_ADDIS;
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
 
-    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8l_BIT; //CONTINOUS MODE with DMA
+    ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE with DMA
     ADC1_CFGR &= ~ADC_CFGR_DMACFG;
     //ADC1_CFGR = ADC_CFGR_CONT  | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE without DMA
     //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE WITH DMA
-    ADC1_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 9; //3MSPS, gets a bit unstable if higher. 
+
+    ADC1_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 9; //3MSPS, gets a bit unstable if higher.
 
     // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it
@@ -300,7 +299,7 @@ static void gpio_setup(void) {
     rcc_periph_clock_enable(RCC_GPIOB);
     
     gpio_set_af(GPIOD, GPIO_AF2, GPIO2); //timer
-    gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_PULLUP,
+    gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE,
                     GPIO2); //timer
     
 	gpio_mode_setup(GPIOE, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,
@@ -360,7 +359,7 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         DMA1_CNDTR1 = num_samples_per_frame;
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
         
-        TIM3_CCR1 = 0x8001;
+        TIM3_CCR1 = 0x0001;
         
         ADC1_CR |= ADC_CR_ADEN;
         
@@ -611,9 +610,11 @@ int main(void) {
 			3, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usb_device, cdcacm_set_config);
 
+    /*
     int i;
 	for (i = 0; i < 0x800000; i++)
 		__asm__("nop");
+     */
 
     gpio_port_write(GPIOE, 0x1100);
     ADC1_CR |= ADC_CR_ADSTART;

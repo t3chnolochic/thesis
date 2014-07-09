@@ -7,8 +7,10 @@ import matplotlib.pyplot as plt
 import csv
 import matplotlib.patches as mpatches
 
+
 gels = 8;
 frame_size = gels*62*75;
+
 bytes_per_sample = 1;
 
 def tc8(val):
