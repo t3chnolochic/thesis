@@ -15,7 +15,7 @@ Wn = 1; %(samp/2)/(2*pi);
 y=A*sin(2*pi*freq*t1); %sampled
 y=sinc_filter(y,Wn);
 z=A*sin(2*pi*freq*t2); %perfect
-yfilter = filter(Hd,y);
+%yfilter = filter(Hd,y);
 ysinc = sinc_filter(y,Wn);
 %ysub = subsampling(y,5);
 

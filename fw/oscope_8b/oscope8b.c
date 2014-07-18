@@ -71,7 +71,7 @@ static uint8_t  frame = 0;
 // number of samples to take for each frame
 static uint16_t num_samples_per_frame = ADC_SAMPLES;
 
-static uint8_t adc_samples[ADC_SAMPLES *GELS];
+static uint8_t adc_samples[ADC_SAMPLES * GELS];
 static uint8_t zeros[ADC_SAMPLES] = {0};
 
 
@@ -115,6 +115,7 @@ void dma1_channel1_isr(void) {
             ADC1_CR |= ADC_CR_ADEN; //enable ADC DMA
             while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){} //wait for it to turn on
             ADC1_ISR = ADC_ISR_ADRDY;
+            
             ADC1_CR |= ADC_CR_ADSTART;
             
             //TIM3_CNT = 0;
@@ -127,8 +128,8 @@ void dma1_channel1_isr(void) {
         else{
             //TIM3_CNT = 0;
             TIM3_CCR1 = 0x0001; //TOT/GELS;  //unless equals num_frames or smaller
-            TIM3_SMCR |= TIM_SMCR_SMS_TM;
-            TIM3_CR1 |= TIM_CR1_OPM;
+            //TIM3_SMCR |= TIM_SMCR_SMS_TM;
+            //TIM3_CR1 |= TIM_CR1_OPM;
             //TIM3_CR1 |= TIM_CR1_CEN;
             
             frame = 0;
@@ -199,11 +200,16 @@ void adc1_2_isr(void) {
 static void timer_setup(void) {
     rcc_periph_clock_enable(RCC_TIM3);
     
-    TIM3_CR1 = TIM_CR1_CKD_CK_INT | !TIM_CR1_ARPE | TIM_CR1_DIR_UP | TIM_CR1_OPM | !TIM_CR1_URS | !TIM_CR1_UDIS | !TIM_CR1_CEN; // one shot mode
+    TIM3_CR1 = TIM_CR1_CKD_CK_INT | !TIM_CR1_ARPE | TIM_CR1_DIR_UP  | !TIM_CR1_URS | !TIM_CR1_UDIS | !TIM_CR1_CEN; // one shot mode
+    
     
     TIM3_CR2 = (!TIM_CR2_TI1S) | TIM_CR2_MMS_COMPARE_OC1REF | (!TIM_CR2_CCDS);
-    TIM3_SMCR = (!TIM_SMCR_ECE) | TIM_SMCR_ETPS_OFF | TIM_SMCR_ETF_OFF | !TIM_SMCR_MSM | TIM_SMCR_TS_ETRF | (0x0 << 3) | TIM_SMCR_SMS_TM; // trigger mode
+    TIM3_SMCR = (!TIM_SMCR_ECE) | TIM_SMCR_ETP | TIM_SMCR_ETPS_OFF | TIM_SMCR_ETF_OFF | !TIM_SMCR_MSM | TIM_SMCR_TS_ETRF | (0x0 << 3); // trigger mode
     TIM3_SMCR  &= ~TIM_SMCR_ETP;
+    
+    //TIM3_CR1 |= TIM_CR1_OPM;
+    //TIM3_SMCR |= TIM_SMCR_SMS_TM;
+    
     
     /* TIM3_SMCR Bit 3
      OCCS: OCREF clear selection
@@ -249,7 +255,7 @@ static void adc_setup(void) {
     gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2); //pa2
     gpio_mode_setup(GPIOF, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO4); //f4
 
-    if ((ADC1_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC read yet. wait until ADDIS is done
+    if ((ADC1_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
         ADC1_CR |= ADC_CR_ADDIS;
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
@@ -268,6 +274,10 @@ static void adc_setup(void) {
     //ADC_SMPR1_SMP_61DOT5CYC = 685.7kSPS
     //ADC_SMPR1_SMP_181DOT5CYC = 252.6kSPS
     //ADC_SMPR1_SMP_601DOT5CYC = 78.7kSPS
+    
+    //Example:
+    //With FADC_CLK = 72 MHz and a sampling time of 1.5 ADC clock cycles:
+    //Tconv = (1.5 + 12.5) ADC clock cycles = 14 ADC clock cycles = 0.194 us (for fast channels)
 
     // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it
@@ -275,7 +285,7 @@ static void adc_setup(void) {
 
     ADC_CCR = ADC_CCR_CKMODE_DIV1;
 
-    ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
+    //ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
 
     // start voltage reg
     
@@ -294,7 +304,7 @@ static void adc_setup(void) {
     // power on ADC
     ADC1_CR |= ADC_CR_ADEN;
 
-    nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
+    //nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
 
 	/* Wait for ADC starting up. */
     while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
@@ -333,7 +343,9 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
     //num_frames = 1;
     
     
-     //TIM3_CR1 |= TIM_CR1_CEN; //enable so that only usb sends can gather data
+    //TIM3_CR1 |= TIM_CR1_CEN; //enable so that only usb sends can gather data
+    TIM3_SMCR |= TIM_SMCR_SMS_TM;
+    TIM3_CR1 |= TIM_CR1_OPM;
     
     /*
      ADC1_CR |= ADC_CR_ADSTART;
@@ -611,7 +623,9 @@ int main(void) {
 	adc_setup();
     dma_setup();
     timer_setup();
+    
     //TIM3_CR1 &= ~TIM_CR1_CEN;   //disable so next cds_rx can enable
+    
 	usb_setup();
 
 	usb_device = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,

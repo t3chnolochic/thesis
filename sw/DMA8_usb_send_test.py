@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     usbfriend = serial.Serial(sys.argv[1]);
     
-    #usbfriend.write('x');
+    usbfriend.write('x');
     
     for frame_idx in xrange(gels):
         #usbfriend.write('x');

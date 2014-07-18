@@ -122,7 +122,14 @@ end
         
 figure('Name', 'Display Results')
 subplot(2,1,1);
-pwelch(seqb(1:end));
+samp = 3E6*8;
+NFFT = 2^nextpow2(length(seqb));
+Y = fft(seqb,NFFT)/length(seqb);
+plot(fft(seqb));
+f = samp/2*linspace(0,1,NFFT/2+1);
+% Plot single-sided amplitude spectrum.
+plot(f,2*abs(Y(1:NFFT/2+1))) 
+
 subplot(2,1,2);
-plot(seqb(500:500+len));
+plot(seqb(1:end));
 r = snr(seqb(1:end))

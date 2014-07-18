@@ -71,7 +71,7 @@ figure('Name','seqb');
 subplot(1,1,1);
 pwelch(seqb);
 
-start = .1875;
+start = .87083;
 seqb = sinc_filter(seqb, [start start+0.125]); %MOVING WINDOW DEPENDS ON FREQUENCY OF INTEREST
 
 figure('Name','seqb');
@@ -79,7 +79,7 @@ subplot(1,1,1);
 pwelch(seqb);
 
 endpt = 3000;
-split = 20;
+split = 25;
 samp = 24E6;
 xl = length(sinc_interp(seqb(1:endpt),0:1/(samp):(endpt-1)/(samp),0:1/(split*samp):(endpt-1)/(split*samp)));
 out = zeros(xl,1);
