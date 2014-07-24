@@ -377,6 +377,9 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
     // TODO: phase adjustment setting
     //num_frames = 1;
     
+    ADC1_CR |= ADC_CR_ADEN; //enable ADC DMA
+    ADC1_ISR = ADC_ISR_ADRDY;
+    ADC1_CR |= ADC_CR_ADSTART;
     
     //TIM3_CR1 |= TIM_CR1_CEN; //enable so that only usb sends can gather data
     TIM3_SMCR |= TIM_SMCR_SMS_TM;
@@ -404,6 +407,7 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
         
         TIM3_CCR1 = 0x0001;
+        TIM3_SMCR &= ~TIM_SMCR_SMS_TM;
         TIM3_SMCR |= TIM_SMCR_SMS_OFF;
         
         /*
@@ -417,14 +421,14 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         }
         */
         
-        
-        //ADC1_CR |= ADC_CR_ADEN;
+        /*
+        ADC1_CR |= ADC_CR_ADEN;
         
         while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
         ADC1_ISR = ADC_ISR_ADRDY;
         
         ADC1_CR |= ADC_CR_ADSTART;
-        
+        */
         
         
         
