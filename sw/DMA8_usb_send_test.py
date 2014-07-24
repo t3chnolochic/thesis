@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 
 
 gels = 8;
-frame_size = gels*62*75;
+frame_size = (gels*62*75);
 
 bytes_per_sample = 1;
 

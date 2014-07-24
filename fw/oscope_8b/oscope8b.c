@@ -87,6 +87,7 @@ void tim3_isr(void) {
 }
 
 void dma1_channel1_isr(void) {
+    frame = frame + 1;
     if ( dma_get_interrupt_flag(DMA1, 1, DMA_TCIF) != 0 ) {
         TIM3_CR1 &= ~TIM_CR1_CEN;
         
@@ -99,9 +100,6 @@ void dma1_channel1_isr(void) {
         ADC1_CR |= ADC_CR_ADDIS;
         while ((ADC1_CR & ADC_CR_ADEN) != 0){
         }
-        
-        
-        frame++;
         
         dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
         
@@ -119,26 +117,30 @@ void dma1_channel1_isr(void) {
             
             ADC1_CR |= ADC_CR_ADSTART;
             
-            //TIM3_CNT = 0;
             TIM3_CCR1 = TIM3_CCR1 + TOT/GELS;  //unless equals num_frames or smaller
             TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
             TIM3_CR1 |= TIM_CR1_OPM;
-            //TIM3_CR1 |= TIM_CR1_CEN;
+            
         }
         
         else{
-            //TIM3_CNT = 0;
             TIM3_CCR1 = 0x0001; //TOT/GELS;  //unless equals num_frames or smaller
-            TIM3_SMCR |= TIM_SMCR_SMS_OFF;
-            //TIM3_SMCR |= TIM_SMCR_SMS_TM;
-            //TIM3_CR1 |= TIM_CR1_OPM;
-            //TIM3_CR1 |= TIM_CR1_CEN;
             
             frame = 0;
             sample_chunk_per_frame = 0;
             //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
-            trig[31] = 0xFF; //ADC3_DR;
+           
+            ADC3_CR |= ADC_CR_ADSTART;
+            
+            while ((ADC3_ISR & ADC_ISR_EOC) == 0){
+                gpio_port_write(GPIOE, 0xFF00);
+            }
+          
+            trig[31] = ADC3_DR;
             usbd_ep_write_packet(usb_device,0x82, trig, 62);
+            
+            //TIM3_SMCR &= TIM_SMCR_SMS_TM;
+            //TIM3_SMCR |= TIM_SMCR_SMS_OFF;
             
             //TIM3_CR1 &= ~TIM_CR1_CEN;
             
@@ -268,12 +270,6 @@ static void adc_setup(void) {
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
     
-    //ADC2------------------------------------------------------------------------------------
-    if ((ADC3_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
-        ADC3_CR |= ADC_CR_ADDIS;
-        while (ADC3_CR & ADC_CR_ADDIS){}
-    }
-    
     ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE with DMA
     ADC1_CFGR &= ~ADC_CFGR_DMACFG;
     //ADC1_CFGR = ADC_CFGR_CONT  | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE without DMA
@@ -301,7 +297,8 @@ static void adc_setup(void) {
     ADC1_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
     ADC1_CR = ADC_CR_ADVREGEN_ENABLE;
     //calibration
-    //ADC1_CR |= ADC_CR_ADCALDIF; single
+
+    
     ADC1_CR |= ADC_CR_ADCAL; //single ended
     while ((ADC1_CR & ADC_CR_ADCAL) != 0) {}
     
@@ -309,24 +306,7 @@ static void adc_setup(void) {
     ADC1_CR |= ADC_CR_ADCAL;
     while ((ADC1_CR & ADC_CR_ADCAL) != 0) {}
     
-    //ADC2------------------------------------------------------------------------------------
-
     
-    ADC3_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
-    
-    ADC3_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 1;
-    
-    ADC3_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ); //PB1
-    
-    ADC3_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
-    ADC3_CR = ADC_CR_ADVREGEN_ENABLE;
-    
-   
-    //ADC3 calibration------------------------------------------------------------------------
-    ADC3_CR |= ADC_CR_ADCAL; //single ended
-    while ((ADC2_CR & ADC_CR_ADCAL) != 0) {
-    gpio_port_write(GPIOE, 0xAA00);
-    }
     
     // power on ADC1
     ADC1_CR |= ADC_CR_ADEN;
@@ -336,9 +316,37 @@ static void adc_setup(void) {
     while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
     ADC1_ISR = ADC_ISR_ADRDY;
     
+    //ADC3------------------------------------------------------------------------------------
+    //ADC3------------------------------------------------------------------------------------
+    if ((ADC3_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
+        ADC3_CR |= ADC_CR_ADDIS;
+        while (ADC3_CR & ADC_CR_ADDIS){}
+    }
+    
+    ADC3_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
+    
+    ADC3_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 1;
+    ADC3_IER |= ADC_IER_EOCIE;
+    
+    ADC3_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ); //PB1
+    ADC3_SQR1 |= ADC_SQR1_L_1_CONVERSION;
+    
+    ADC3_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
+    ADC3_CR = ADC_CR_ADVREGEN_ENABLE;
+    
+    
+    //ADC3 calibration------------------------------------------------------------------------
+
+    
+    ADC3_CR |= ADC_CR_ADCAL; //single ended BROKEN IDK WHY
+    while ((ADC3_CR & ADC_CR_ADCAL) != 0) {
+    gpio_port_write(GPIOE, 0x5500);
+    }
+
+
     // power on ADC3
     ADC3_CR |= ADC_CR_ADEN;
-    ADC3_CR |= ADC_CR_ADSTART;
+    //ADC3_CR |= ADC_CR_ADSTART;
     /*
     while ((ADC3_ISR & ADC_ISR_ADRDY) == 0){}
     ADC3_ISR = ADC_ISR_ADRDY;
@@ -377,15 +385,11 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
     // TODO: phase adjustment setting
     //num_frames = 1;
     
-    ADC1_CR |= ADC_CR_ADEN; //enable ADC DMA
-    ADC1_ISR = ADC_ISR_ADRDY;
-    ADC1_CR |= ADC_CR_ADSTART;
     
     //TIM3_CR1 |= TIM_CR1_CEN; //enable so that only usb sends can gather data
     TIM3_SMCR |= TIM_SMCR_SMS_TM;
     TIM3_CR1 |= TIM_CR1_OPM;
     
-    //ADC1_CR |= ADC_CR_ADEN;
 
 }
 
@@ -397,8 +401,9 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
     usb_ready_to_send = 1;
     sample_chunk_per_frame = sample_chunk_per_frame + 1;
     
-    if (sample_chunk_per_frame == (num_frames*BUFF +1)){ //GELS*BUFF, so 4*100 = 400
+    if (sample_chunk_per_frame == (num_frames*BUFF+1)){ //GELS*BUFF, so 4*100 = 400
         //adc_state = 0;
+        gpio_port_write(GPIOE, 0xAA00);
         sample_chunk_per_frame = 0;
         
         DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
@@ -407,9 +412,9 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
         
         TIM3_CCR1 = 0x0001;
-        TIM3_SMCR &= ~TIM_SMCR_SMS_TM;
-        TIM3_SMCR |= TIM_SMCR_SMS_OFF;
         
+        //TIM3_SMCR &= TIM_SMCR_SMS_TM;
+        //TIM3_SMCR |= TIM_SMCR_SMS_OFF;
         /*
         while ((ADC1_CR & ADC_CR_ADSTART) != 0){
         }
@@ -421,14 +426,13 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         }
         */
         
-        /*
+        
         ADC1_CR |= ADC_CR_ADEN;
         
         while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
         ADC1_ISR = ADC_ISR_ADRDY;
         
         ADC1_CR |= ADC_CR_ADSTART;
-        */
         
         
         

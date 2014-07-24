@@ -6,7 +6,6 @@ data0 = csvread('0data.csv');
 %data0 = data0 - 128; %remove 1.5V offset
 ave = mean(data0); 
 data0 = data0 - ave;
-ave;
 r = snr(data0);
 %plot(data0);
 %figure('Name', 'Display Results')
@@ -104,11 +103,16 @@ frac = 0.125/2 ;
 
 if (0.5 - start) <= frac
     sinc_end = 0.5;
+
+elseif ( start < 0)
+    start = 0;
+    sinc_end = start + frac;
 else
     sinc_end = start + frac;
 end
 
 seqb = sinc_filter(seqb2, [start sinc_end]); %goes from 0 to 1
+%seqb = seqb2; %no sinc-ing
 subplot(2,1,2);
 
 NFFT = 2^nextpow2(length(seqb));
@@ -143,16 +147,21 @@ figure('Name', 'Raw Data')
  for n = 1:gels+1
     if n ~= gels+1
         
-        subplot(gels+1,1,n);
-        plot(p(1:len,n));
+        subplot(gels+2,1,n);
+        plot(1:len,p(1:len,n),1:len,data0(1));
         title(strcat('Gel', int2str(n),' #NoFilter'));
         ylim([-75 75]); 
        
 
     else
-        subplot(gels+1,1,n);
-        plot(out);
+        subplot(gels+2,1,n);
+        plot(1:length(out),out,1:length(out),data0(1));
         title('#Sinc-terpolated')
+        ylim([-75 75]);
+        
+        subplot(gels+2,1,n+1);
+        plot(1:400,seqb(1:400),1:400,data0(1));
+        title('Seqb')
         ylim([-75 75]);
 
         
@@ -174,7 +183,9 @@ xlim([0 12E6]);
 
 %pwelch(out(1:end));
 subplot(4,1,2);
-plot(out(length(out)/2:length(out)/2+length(out)/4));
+r = length(out(length(out)/2:length(out)/2+length(out)/4));
+%plot(1:r,out(length(out)/2:length(out)/2+length(out)/4),1:r,data0(1));
+plot(out(length(out)/2:length(out)/2+length(out)/4))
 title('#SincTheDayQuarter');
 r = snr(out(1:end))
 subplot(4,1,3);
