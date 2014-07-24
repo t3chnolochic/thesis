@@ -63,7 +63,6 @@ static usbd_device *usb_device;
 static int sample_chunk_per_frame =0;
 static uint16_t adc_state = 0;
 static uint16_t leds = 0;
-static char trig[62] = {0};
 //static uint32_t old = 0x8000;
 
 // number of phase offsets to run through
@@ -106,7 +105,7 @@ void dma1_channel1_isr(void) {
         dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
         
         if (frame < GELS) {
-            
+           
             
             DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
             DMA1_CMAR1 = (uint32_t) &(adc_samples[frame*num_samples_per_frame]);
@@ -124,24 +123,21 @@ void dma1_channel1_isr(void) {
             TIM3_SMCR |= TIM_SMCR_SMS_TM; //put timer in trigger mode again
             TIM3_CR1 |= TIM_CR1_OPM;
             //TIM3_CR1 |= TIM_CR1_CEN;
-        }
+                    }
         
         else{
             //TIM3_CNT = 0;
             TIM3_CCR1 = 0x0001; //TOT/GELS;  //unless equals num_frames or smaller
-            TIM3_SMCR |= TIM_SMCR_SMS_OFF;
             //TIM3_SMCR |= TIM_SMCR_SMS_TM;
             //TIM3_CR1 |= TIM_CR1_OPM;
             //TIM3_CR1 |= TIM_CR1_CEN;
             
             frame = 0;
             sample_chunk_per_frame = 0;
-            //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
-            trig[31] = 0xFF; //ADC3_DR;
-            usbd_ep_write_packet(usb_device,0x82, trig, 62);
-            
+            usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
+
             //TIM3_CR1 &= ~TIM_CR1_CEN;
-            
+
             //ADC1_CR |= ADC_CR_ADSTART;
             // reset DMA so we're ready to transmit again
             //TIM3_CR1 &= ~TIM_CR1_CEN;   //disable so next cds_rx can enable
@@ -156,46 +152,46 @@ void dma1_channel1_isr(void) {
 void adc1_2_isr(void) {
     
     if ( adc_eoc(ADC1) != 0 ) {
-        
+
         adc_state++;
         
         /*
-         if (adc_state == (62*BUFF+1)){
-         
-         while ((ADC1_CR & ADC_CR_ADSTART) != 0){
-         }
-         ADC1_CR |= ADC_CR_ADSTP;
-         while ( (ADC1_CR & ADC_CR_ADSTP) != 0){
-         }
-         ADC1_CR |= ADC_CR_ADDIS;
-         while ((ADC1_CR & ADC_CR_ADEN) != 0){
-         }
-         adc_state = 0;
-         
-         gpio_port_write(GPIOE, 0xAA00);
-         }
-         */
-        
-#if 0 //use this to avoid DMA use ADC interrupt as pseudo-DMA
-        if (adc_state == (ADC_SAMPLES)-1) {
-            leds = leds+0x0100;
-            gpio_port_write(GPIOE, leds);
-            adc_samples[adc_state] = ADC1_DR;
+        if (adc_state == (62*BUFF+1)){
+            
+            while ((ADC1_CR & ADC_CR_ADSTART) != 0){
+            }
+            ADC1_CR |= ADC_CR_ADSTP;
+            while ( (ADC1_CR & ADC_CR_ADSTP) != 0){
+            }
+            ADC1_CR |= ADC_CR_ADDIS;
+            while ((ADC1_CR & ADC_CR_ADEN) != 0){
+            }
             adc_state = 0;
-            sample_chunk_per_frame = 0;
-            usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
-            //ADC1_CR |= ADC_CR_ADSTP; ADSTP DOESN'T WORK SO DON'T USE THIS
-            ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO PAUSE ADC
+            
+            gpio_port_write(GPIOE, 0xAA00);
         }
+        */
         
-        else {
-            adc_samples[adc_state] = ADC1_DR;
-            adc_state++;
-        }
-#endif
+        #if 0 //use this to avoid DMA use ADC interrupt as pseudo-DMA
+            if (adc_state == (ADC_SAMPLES)-1) {
+                leds = leds+0x0100;
+                gpio_port_write(GPIOE, leds);
+                adc_samples[adc_state] = ADC1_DR;
+                adc_state = 0;
+                sample_chunk_per_frame = 0;
+                usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
+                //ADC1_CR |= ADC_CR_ADSTP; ADSTP DOESN'T WORK SO DON'T USE THIS
+                ADC1_CR |= ADC_CR_ADDIS; //CORRECT WAY TO PAUSE ADC
+            }
+            
+            else {
+                adc_samples[adc_state] = ADC1_DR;
+                adc_state++;
+            }
+         #endif
         
     }
-    
+   
 }
 
 
@@ -218,7 +214,7 @@ static void timer_setup(void) {
     /* TIM3_SMCR Bit 3
      OCCS: OCREF clear selection
      This bit is used to select the OCREF clear source
-     0: OCREF_CLR_INT is connected to the OCREF_CLR input
+     0: OCREF_CLR_INT is connected to the OCREF_CLR input 
      1: OCREF_CLR_INT is connected to ETRF
      */
     //nvic_enable_irq(NVIC_TIM3_IRQ); //TIMER ISR
@@ -235,9 +231,9 @@ static void timer_setup(void) {
 
 static void dma_setup(void) {
     rcc_periph_clock_enable(RCC_DMA1);
-    
+
     DMA1_CCR1 = DMA_CCR_PL_VERY_HIGH | DMA_CCR_MSIZE_8BIT | DMA_CCR_PSIZE_8BIT |
-    DMA_CCR_MINC | DMA_CCR_TCIE;
+        DMA_CCR_MINC | DMA_CCR_TCIE;
     
     DMA1_CNDTR1 = num_samples_per_frame;
     DMA1_CPAR1 = (uint32_t) &(ADC1_DR);
@@ -251,34 +247,24 @@ static void dma_setup(void) {
 static void adc_setup(void) {
 	//ADC
 	rcc_periph_clock_enable(RCC_ADC12);
-    rcc_periph_clock_enable(RCC_ADC34);
 	rcc_periph_clock_enable(RCC_GPIOA);
-    rcc_periph_clock_enable(RCC_GPIOB);
     rcc_periph_clock_enable(RCC_GPIOF);
 	//ADC
 	//gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); //pa0 //dead
 	gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1); //pa1
     gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO2); //pa2
     gpio_mode_setup(GPIOF, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO4); //f4
-    gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO6); //pa6
-    gpio_mode_setup(GPIOB, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO1); //PB1
-    
+
     if ((ADC1_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
         ADC1_CR |= ADC_CR_ADDIS;
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
-    
-    //ADC2------------------------------------------------------------------------------------
-    if ((ADC3_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
-        ADC3_CR |= ADC_CR_ADDIS;
-        while (ADC3_CR & ADC_CR_ADDIS){}
-    }
-    
+
     ADC1_CFGR = ADC_CFGR_CONT | ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE |ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE with DMA
     ADC1_CFGR &= ~ADC_CFGR_DMACFG;
     //ADC1_CFGR = ADC_CFGR_CONT  | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4 | ADC_CFGR_RES_8_BIT; //CONTINOUS MODE without DMA
     //ADC1_CFGR = ADC_CFGR_DMAEN | ADC_CFGR_EXTEN_RISING_EDGE | ADC_CFGR_EXTSEL_EVENT_4; //SINGLE CONVERSION MODE WITH DMA
-    
+
     ADC1_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 9;
     //ADC_SMPR1_SMP_1DOT5CYC = 4.8MSPS
     //ADC_SMPR1_SMP_2DOT5CYC = 4.36MSPS
@@ -288,18 +274,24 @@ static void adc_setup(void) {
     //ADC_SMPR1_SMP_61DOT5CYC = 685.7kSPS
     //ADC_SMPR1_SMP_181DOT5CYC = 252.6kSPS
     //ADC_SMPR1_SMP_601DOT5CYC = 78.7kSPS
+    
     //Example:
     //With FADC_CLK = 72 MHz and a sampling time of 1.5 ADC clock cycles:
     //Tconv = (1.5 + 12.5) ADC clock cycles = 14 ADC clock cycles = 0.194 us (for fast channels)
-    
+
     // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it
     ADC1_SQR1 = ( ( 3 ) << ADC_SQR1_SQ1_LSB ); //PA2
+
     ADC_CCR = ADC_CCR_CKMODE_DIV1;
+
     //ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
+
     // start voltage reg
+    
     ADC1_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
     ADC1_CR = ADC_CR_ADVREGEN_ENABLE;
+    
     //calibration
     //ADC1_CR |= ADC_CR_ADCALDIF; single
     ADC1_CR |= ADC_CR_ADCAL; //single ended
@@ -308,42 +300,15 @@ static void adc_setup(void) {
     ADC1_CR |= ADC_CR_ADCALDIF; //diff
     ADC1_CR |= ADC_CR_ADCAL;
     while ((ADC1_CR & ADC_CR_ADCAL) != 0) {}
-    
-    //ADC2------------------------------------------------------------------------------------
 
-    
-    ADC3_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
-    
-    ADC3_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 1;
-    
-    ADC3_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ); //PB1
-    
-    ADC3_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
-    ADC3_CR = ADC_CR_ADVREGEN_ENABLE;
-    
-   
-    //ADC3 calibration------------------------------------------------------------------------
-    ADC3_CR |= ADC_CR_ADCAL; //single ended
-    while ((ADC2_CR & ADC_CR_ADCAL) != 0) {
-    gpio_port_write(GPIOE, 0xAA00);
-    }
-    
-    // power on ADC1
+    // power on ADC
     ADC1_CR |= ADC_CR_ADEN;
+
     //nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
-    
-	/* Wait for ADC1 starting up. ----------------------------------------------------------*/
+
+	/* Wait for ADC starting up. */
     while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
     ADC1_ISR = ADC_ISR_ADRDY;
-    
-    // power on ADC3
-    ADC3_CR |= ADC_CR_ADEN;
-    ADC3_CR |= ADC_CR_ADSTART;
-    /*
-    while ((ADC3_ISR & ADC_ISR_ADRDY) == 0){}
-    ADC3_ISR = ADC_ISR_ADRDY;
-    */
-
 }
 
 static void gpio_setup(void) {
@@ -382,19 +347,30 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
     TIM3_SMCR |= TIM_SMCR_SMS_TM;
     TIM3_CR1 |= TIM_CR1_OPM;
     
-    //ADC1_CR |= ADC_CR_ADEN;
-
+    /*
+     ADC1_CR |= ADC_CR_ADSTART;
+     
+     if (len) {
+     ADC1_CR |= ADC_CR_ADSTART;
+     // ((uint32_t *) &(buf[0]))[0] = ADC1_CR;
+     //len = 4;
+     //buf[0] = 'x';
+     //len = 1;
+     //usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
+     //buf[len] = 0;
+     }
+     */
 }
 
 static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
 	(void)ep;
 	(void)usbd_dev;
     
-    
-    usb_ready_to_send = 1;
     sample_chunk_per_frame = sample_chunk_per_frame + 1;
+    usb_ready_to_send = 1;
     
-    if (sample_chunk_per_frame == (num_frames*BUFF +1)){ //GELS*BUFF, so 4*100 = 400
+    
+    if (sample_chunk_per_frame == (num_frames*BUFF)){ //GELS*BUFF, so 4*100 = 400
         //adc_state = 0;
         sample_chunk_per_frame = 0;
         
@@ -404,40 +380,30 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         DMA1_CCR1 |= DMA_CCR_EN; //turn back on because then it won't work, duh.
         
         TIM3_CCR1 = 0x0001;
-        TIM3_SMCR |= TIM_SMCR_SMS_OFF;
         
-        /*
-        while ((ADC1_CR & ADC_CR_ADSTART) != 0){
-        }
-        ADC1_CR |= ADC_CR_ADSTP;
-        while ( (ADC1_CR & ADC_CR_ADSTP) != 0){
-        }
-        ADC1_CR |= ADC_CR_ADDIS;
-        while ((ADC1_CR & ADC_CR_ADEN) != 0){
-        }
-        */
-        
-        
-        //ADC1_CR |= ADC_CR_ADEN;
+        ADC1_CR |= ADC_CR_ADEN;
         
         while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
         ADC1_ISR = ADC_ISR_ADRDY;
         
         ADC1_CR |= ADC_CR_ADSTART;
         
-        
-        
-        
-        
     }
+    
+    /*
+    else if (sample_chunk_per_frame % (BUFF) == 0 ) {
+        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(zeros[62]), 62);
+      
+    }
+     */
     
     else {
         //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(zeros[62]), 62);
-        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*(sample_chunk_per_frame-1)]), 62);
-
+        usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*sample_chunk_per_frame]), 62);
+     
     }
     
-    
+
 }
 
 //SCARY USB STUFF
@@ -503,7 +469,7 @@ static const struct {
 	},
 	.call_mgmt = {
 		.bFunctionLength =
-        sizeof(struct usb_cdc_call_management_descriptor),
+			sizeof(struct usb_cdc_call_management_descriptor),
 		.bDescriptorType = CS_INTERFACE,
 		.bDescriptorSubtype = USB_CDC_TYPE_CALL_MANAGEMENT,
 		.bmCapabilities = 0,
@@ -521,7 +487,7 @@ static const struct {
 		.bDescriptorSubtype = USB_CDC_TYPE_UNION,
 		.bControlInterface = 0,
 		.bSubordinateInterface0 = 1,
-    },
+	 },
 };
 
 static const struct usb_interface_descriptor comm_iface[] = {{
@@ -534,9 +500,9 @@ static const struct usb_interface_descriptor comm_iface[] = {{
 	.bInterfaceSubClass = USB_CDC_SUBCLASS_ACM,
 	.bInterfaceProtocol = USB_CDC_PROTOCOL_AT,
 	.iInterface = 0,
-    
+
 	.endpoint = comm_endp,
-    
+
 	.extra = &cdcacm_functional_descriptors,
 	.extralen = sizeof(cdcacm_functional_descriptors),
 }};
@@ -551,7 +517,7 @@ static const struct usb_interface_descriptor data_iface[] = {{
 	.bInterfaceSubClass = 0,
 	.bInterfaceProtocol = 0,
 	.iInterface = 0,
-    
+
 	.endpoint = data_endp,
 }};
 
@@ -572,7 +538,7 @@ static const struct usb_config_descriptor config = {
 	.iConfiguration = 0,
 	.bmAttributes = 0x80,
 	.bMaxPower = 0x32,
-    
+
 	.interface = ifaces,
 };
 
@@ -586,37 +552,37 @@ static const char *usb_strings[] = {
 uint8_t usbd_control_buffer[128];
 
 static int cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
-                                  uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
+		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
 {
 	(void)complete;
 	(void)buf;
 	(void)usbd_dev;
-    
+
 	switch (req->bRequest) {
-        case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
-            /*
-             * This Linux cdc_acm driver requires this to be implemented
-             * even though it's optional in the CDC spec, and we don't
-             * advertise it in the ACM functional descriptor.
-             */
-            char local_buf[10];
-            struct usb_cdc_notification *notif = (void *)local_buf;
-            
-            /* We echo signals back to host as notification. */
-            notif->bmRequestType = 0xA1;
-            notif->bNotification = USB_CDC_NOTIFY_SERIAL_STATE;
-            notif->wValue = 0;
-            notif->wIndex = 0;
-            notif->wLength = 2;
-            local_buf[8] = req->wValue & 3;
-            local_buf[9] = 0;
-            // usbd_ep_write_packet(0x83, buf, 10);
-            return 1;
+	case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
+		/*
+		 * This Linux cdc_acm driver requires this to be implemented
+		 * even though it's optional in the CDC spec, and we don't
+		 * advertise it in the ACM functional descriptor.
+		 */
+		char local_buf[10];
+		struct usb_cdc_notification *notif = (void *)local_buf;
+
+		/* We echo signals back to host as notification. */
+		notif->bmRequestType = 0xA1;
+		notif->bNotification = USB_CDC_NOTIFY_SERIAL_STATE;
+		notif->wValue = 0;
+		notif->wIndex = 0;
+		notif->wLength = 2;
+		local_buf[8] = req->wValue & 3;
+		local_buf[9] = 0;
+		// usbd_ep_write_packet(0x83, buf, 10);
+		return 1;
 		}
-        case USB_CDC_REQ_SET_LINE_CODING:
-            if (*len < sizeof(struct usb_cdc_line_coding))
-                return 0;
-            return 1;
+	case USB_CDC_REQ_SET_LINE_CODING:
+		if (*len < sizeof(struct usb_cdc_line_coding))
+			return 0;
+		return 1;
 	}
 	return 0;
 }
@@ -624,16 +590,16 @@ static int cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *
 static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue) {
 	(void)wValue;
 	(void)usbd_dev;
-    
+
 	usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_rx_cb);
 	usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_tx_cb);
 	usbd_ep_setup(usbd_dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 16, NULL);
-    
+
 	usbd_register_control_callback(
-                                   usbd_dev,
-                                   USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
-                                   USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-                                   cdcacm_control_request);
+				usbd_dev,
+				USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
+				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
+				cdcacm_control_request);
 }
 
 static void usb_setup(void) {
@@ -641,7 +607,7 @@ static void usb_setup(void) {
 	rcc_usb_prescale_1();
 	rcc_periph_clock_enable(RCC_USB);
 	rcc_periph_clock_enable(RCC_GPIOA);
-    
+
 	/* Setup GPIO pin GPIO_USART2_TX/GPIO9 on GPIO port A for transmit. */
 	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO11 | GPIO12);
 	gpio_set_af(GPIOA, GPIO_AF14, GPIO11| GPIO12);
@@ -652,7 +618,7 @@ static void usb_setup(void) {
 
 int main(void) {
     rcc_clock_setup_hsi(&hsi_8mhz[CLOCK_48MHZ]);
-    
+
     gpio_setup();
 	adc_setup();
     dma_setup();
@@ -661,22 +627,21 @@ int main(void) {
     //TIM3_CR1 &= ~TIM_CR1_CEN;   //disable so next cds_rx can enable
     
 	usb_setup();
-    
+
 	usb_device = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,
-                           3, usbd_control_buffer, sizeof(usbd_control_buffer));
+			3, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usb_device, cdcacm_set_config);
-    
+
     /*
-     int i;
-     for (i = 0; i < 0x800000; i++)
-     __asm__("nop");
+    int i;
+	for (i = 0; i < 0x800000; i++)
+		__asm__("nop");
      */
-    
+
     gpio_port_write(GPIOE, 0x1100);
     ADC1_CR |= ADC_CR_ADSTART;
-    
+
 	while (1){
-        
 		usbd_poll(usb_device);
     }
     
