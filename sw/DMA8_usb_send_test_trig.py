@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 
 
 gels = 8;
-frame_size =  (gels*62*75)+62;
+frame_size = (gels*62*75)+62;
 
 bytes_per_sample = 1;
 
@@ -40,11 +40,11 @@ if __name__ == "__main__":
     usbfriend = serial.Serial(sys.argv[1]);
     
     usbfriend.write('x');
+    data = usbfriend.read(frame_size * bytes_per_sample);
     
     for frame_idx in xrange(gels):
         #usbfriend.write('x');
-        
-        data = usbfriend.read(frame_size * bytes_per_sample);
+        #data = usbfriend.read(frame_size * bytes_per_sample);
         f = open('log.txt', 'w');
         f.write(data);
         f.close();

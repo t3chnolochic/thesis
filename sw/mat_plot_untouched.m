@@ -4,8 +4,13 @@ addpath('/Users/jinstone/Desktop/stmsetup/thesis/sw/sinc_interp/');
 
 data0 = csvread('0data.csv');
 %data0 = data0 - 128; %remove 1.5V offset
+trigger_set = data0(1:62);
+
+data0 = data0(63:end);
 ave = mean(data0); 
 data0 = data0 - ave;
+trigger = mean(trigger_set(2:8)) -ave;
+
 r = snr(data0);
 %plot(data0);
 %figure('Name', 'Display Results')
@@ -44,6 +49,7 @@ end
 
 seqa = [];
 seqb = [];
+seqraw = [];
 
 % for ii = 1:length(preseq)
 %     
@@ -58,7 +64,8 @@ seqb = [];
 for ii = 1:length(p);
     
     for i = 1:gels
-        seqb(end+1) = p(ii,i);
+        seqraw(end+1) = p(ii,i);
+        
     end
     
        
@@ -68,9 +75,9 @@ endpt = 3000;
 split = 2;
 samp = 24E6;
 
-xl = length(sinc_interp(seqb(1:endpt),0:1/(samp):(endpt-1)/(samp),0:1/(split*samp):(endpt-1)/(split*samp)));
+xl = length(sinc_interp(seqraw(1:endpt),0:1/(samp):(endpt-1)/(samp),0:1/(split*samp):(endpt-1)/(split*samp)));
 out = zeros(xl,1);
-out = sinc_interp(seqb(1:endpt),0:1/(samp):(endpt-1)/(samp),0:1/(split*samp):(endpt-1)/(split*samp));
+out = sinc_interp(seqraw(1:endpt),0:1/(samp):(endpt-1)/(samp),0:1/(split*samp):(endpt-1)/(split*samp));
 seqb2 = out;
 
 samp1 = 48E6;
@@ -78,9 +85,9 @@ samp1 = 48E6;
 figure('Name','seqb');
 subplot(2,1,1);
 
-NFFT = 2^nextpow2(length(seqb2));
-Y = fft(seqb2,NFFT)/length(seqb2);
-plot(fft(seqb2));
+NFFT = 2^nextpow2(length(out));
+Y = fft(out,NFFT)/length(out);
+plot(fft(out));
 f = samp1/2*linspace(0,1,NFFT/2+1);
 f = f(1:end/2);
 % Plot single-sided amplitude spectrum.
@@ -111,7 +118,7 @@ else
     sinc_end = start + frac;
 end
 
-seqb = sinc_filter(seqb2, [start sinc_end]); %goes from 0 to 1
+seqb = sinc_filter(out, [start sinc_end]); %goes from 0 to 1
 %seqb = seqb2; %no sinc-ing
 subplot(2,1,2);
 
@@ -148,20 +155,20 @@ figure('Name', 'Raw Data')
     if n ~= gels+1
         
         subplot(gels+2,1,n);
-        plot(1:len,p(1:len,n),1:len,data0(1));
+        plot(1:len,p(1:len,n),1:len,trigger);
         title(strcat('Gel', int2str(n),' #NoFilter'));
         ylim([-75 75]); 
        
 
     else
         subplot(gels+2,1,n);
-        plot(1:length(out),out,1:length(out),data0(1));
+        plot(1:length(out),out,1:length(out),trigger);
         title('#Sinc-terpolated')
         ylim([-75 75]);
         
         subplot(gels+2,1,n+1);
-        plot(1:400,seqb(1:400),1:400,data0(1));
-        title('Seqb')
+        plot(1:400,seqraw(1:400),1:400,trigger);
+        title('Seqraw')
         ylim([-75 75]);
 
         
