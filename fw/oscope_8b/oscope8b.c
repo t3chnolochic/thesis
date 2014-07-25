@@ -131,13 +131,24 @@ void dma1_channel1_isr(void) {
             //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[0]), 62);
            
             ADC3_CR |= ADC_CR_ADSTART;
-            
-            while ((ADC3_ISR & ADC_ISR_EOC) == 0){
-                gpio_port_write(GPIOE, 0xFF00);
+            while ((ADC3_ISR & ADC_ISR_EOC) == 0){ //try ADC_ISR_EOS next
+                gpio_port_write(GPIOE, 0xFF00); //bit has been set
             }
-          
+            gpio_port_write(GPIOE, 0x1100);
             trig[31] = ADC3_DR;
             usbd_ep_write_packet(usb_device,0x82, trig, 62);
+            /*
+            if ((ADC3_ISR & ADC_ISR_EOC) != 0){ //try ADC_ISR_EOS next
+                gpio_port_write(GPIOE, 0xFF00); //bit has been set
+                trig[31] = ADC3_DR;
+                usbd_ep_write_packet(usb_device,0x82, trig, 62);
+            }
+          
+            else{
+                trig[31] = 0xFF;
+                usbd_ep_write_packet(usb_device,0x82, trig, 62);
+            }
+             */
             
             //TIM3_SMCR &= TIM_SMCR_SMS_TM;
             //TIM3_SMCR |= TIM_SMCR_SMS_OFF;
@@ -291,7 +302,7 @@ static void adc_setup(void) {
     // set ADC to convert on PA2 (ADC1_IN3)
     // don't send negative shit into it
     ADC1_SQR1 = ( ( 3 ) << ADC_SQR1_SQ1_LSB ); //PA2
-    ADC_CCR = ADC_CCR_CKMODE_DIV1;
+    ADC_CCR = ADC_CCR_CKMODE_DIV1 | ADC_CCR_VREFEN;
     //ADC1_IER = ADC_IER_EOCIE; //only on if you want to see one conversion at a time
     // start voltage reg
     ADC1_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
@@ -316,7 +327,7 @@ static void adc_setup(void) {
     while ((ADC1_ISR & ADC_ISR_ADRDY) == 0){}
     ADC1_ISR = ADC_ISR_ADRDY;
     
-    //ADC3------------------------------------------------------------------------------------
+ 
     //ADC3------------------------------------------------------------------------------------
     if ((ADC3_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
         ADC3_CR |= ADC_CR_ADDIS;
@@ -324,9 +335,10 @@ static void adc_setup(void) {
     }
     
     ADC3_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
+    ADC3_CFGR &= ~ADC_CFGR_CONT;
     
-    ADC3_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 1;
-    ADC3_IER |= ADC_IER_EOCIE;
+    ADC3_SMPR1 = (ADC_SMPR1_SMP_61DOT5CYC) << 1;
+    //ADC3_IER = ADC_IER_EOCIE | ADC_IER_EOSIE;
     
     ADC3_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ); //PB1
     ADC3_SQR1 |= ADC_SQR1_L_1_CONVERSION;
@@ -337,12 +349,12 @@ static void adc_setup(void) {
     
     //ADC3 calibration------------------------------------------------------------------------
 
-    
+    /*
     ADC3_CR |= ADC_CR_ADCAL; //single ended BROKEN IDK WHY
     while ((ADC3_CR & ADC_CR_ADCAL) != 0) {
-    gpio_port_write(GPIOE, 0x5500);
+        gpio_port_write(GPIOE, 0x5500);
     }
-
+*/
 
     // power on ADC3
     ADC3_CR |= ADC_CR_ADEN;
@@ -403,7 +415,7 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
     
     if (sample_chunk_per_frame == (num_frames*BUFF+1)){ //GELS*BUFF, so 4*100 = 400
         //adc_state = 0;
-        gpio_port_write(GPIOE, 0xAA00);
+        //gpio_port_write(GPIOE, 0xAA00);
         sample_chunk_per_frame = 0;
         
         DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
