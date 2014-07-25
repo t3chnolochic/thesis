@@ -49,6 +49,9 @@
 #define LD8 GPIOE, GPIO14
 #define LD6 GPIOE, GPIO15
 
+#define	ADC_COMMON_REGISTERS_BASE_34	(ADC3_BASE+0x300)
+#define ADC34_CCR MMIO32                (ADC_COMMON_REGISTERS_BASE_34 + 0x8)
+
 
 static volatile uint8_t usb_ready_to_send = 0;
 static usbd_device *usb_device;
@@ -122,14 +125,14 @@ void dma1_channel1_isr(void) {
             TIM3_CR1 |= TIM_CR1_OPM;
             
             //get trigger
-            ADC2_CR |= ADC_CR_ADSTART;
+            ADC3_CR |= ADC_CR_ADSTART;
             
-            while ((ADC2_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
+            while ((ADC3_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
                 gpio_port_write(GPIOE, 0xFF00); //bit has been set
             }
-            ADC2_ISR |= ADC_ISR_EOC;
-            ADC2_ISR |= ADC_ISR_EOS;
-            trig[frame] = ADC2_DR;
+            ADC3_ISR |= ADC_ISR_EOC;
+            ADC3_ISR |= ADC_ISR_EOS;
+            trig[frame] = ADC3_DR;
             
         }
         
@@ -138,14 +141,14 @@ void dma1_channel1_isr(void) {
             TIM3_SMCR &= ~TIM_SMCR_SMS_TM;
             TIM3_SMCR |= TIM_SMCR_SMS_OFF;
             
-            ADC2_CR |= ADC_CR_ADSTART;
+            ADC3_CR |= ADC_CR_ADSTART;
             
-            while ((ADC2_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
+            while ((ADC3_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
                 gpio_port_write(GPIOE, 0xFF00); //bit has been set
             }
-            ADC2_ISR |= ADC_ISR_EOC;
-            ADC2_ISR |= ADC_ISR_EOS;
-            trig[frame] = ADC2_DR;
+            ADC3_ISR |= ADC_ISR_EOC;
+            ADC3_ISR |= ADC_ISR_EOS;
+            trig[frame] = ADC3_DR;
             
             
             frame = 0;
@@ -268,7 +271,7 @@ static void dma_setup(void) {
 static void adc_setup(void) {
 	//ADC
 	rcc_periph_clock_enable(RCC_ADC12);
-    //rcc_periph_clock_enable(RCC_ADC34);
+    rcc_periph_clock_enable(RCC_ADC34);
 	rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_GPIOB);
     rcc_periph_clock_enable(RCC_GPIOF);
@@ -285,15 +288,15 @@ static void adc_setup(void) {
         while (ADC1_CR & ADC_CR_ADDIS){}
     }
     
-    //ADC2------------------------------------------------------------------------------------
+    //ADC3------------------------------------------------------------------------------------
     
-    if ((ADC2_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
-        ADC2_CR |= ADC_CR_ADDIS;
-        while (ADC2_CR & ADC_CR_ADDIS){}
+    if ((ADC3_CR & ADC_CR_ADEN) != 0 ){ //basically is ADC ready yet. wait until ADDIS is done
+        ADC3_CR |= ADC_CR_ADDIS;
+        while (ADC3_CR & ADC_CR_ADDIS){}
     }
     
-    ADC2_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
-    ADC2_CFGR &= ~ADC_CFGR_CONT;
+    ADC3_CFGR = ADC_CFGR_RES_8_BIT; //SINGLE CONVERSION MODE
+    ADC3_CFGR &= ~ADC_CFGR_CONT;
     
     //ADC1------------------------------------------------------------------------------------
     
@@ -333,19 +336,21 @@ static void adc_setup(void) {
     while ((ADC1_CR & ADC_CR_ADCAL) != 0) {}
     
 
-    //ADC2------------------------------------------------------------------------------------
+    //ADC3------------------------------------------------------------------------------------
     
-    ADC2_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 9;
-    //ADC2_IER = ADC_IER_EOCIE | ADC_IER_EOSIE;
+    ADC3_SMPR1 = (ADC_SMPR1_SMP_7DOT5CYC) << 1;
+    //ADC3_IER = ADC_IER_EOCIE | ADC_IER_EOSIE;
      
-    ADC2_SQR1 = ( ( 3 ) << ADC_SQR1_SQ1_LSB ); //PA6
-    //ADC2_SQR1 |= ADC_SQR1_L_1_CONVERSION;
-     
-    ADC2_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
-    ADC2_CR = ADC_CR_ADVREGEN_ENABLE;
+    ADC3_SQR1 = ( ( 1 ) << ADC_SQR1_SQ1_LSB ); //PA6
+    //ADC3_SQR1 |= ADC_SQR1_L_1_CONVERSION;
     
-    ADC2_CR |= ADC_CR_ADCAL; //single ended BROKEN IDK WHY
-    while ((ADC2_CR & ADC_CR_ADCAL) != 0) {
+    ADC34_CCR = ADC_CCR_CKMODE_DIV1 | ADC_CCR_VREFEN;
+    
+    ADC3_CR = ADC_CR_ADVREGEN_INTERMEDIATE;
+    ADC3_CR = ADC_CR_ADVREGEN_ENABLE;
+    
+    ADC3_CR |= ADC_CR_ADCAL; //single ended BROKEN IDK WHY
+    while ((ADC3_CR & ADC_CR_ADCAL) != 0) {
         gpio_port_write(GPIOE, 0x5500);
     }
     
@@ -354,27 +359,27 @@ static void adc_setup(void) {
     ADC1_CR |= ADC_CR_ADEN;
     //nvic_enable_irq(NVIC_ADC1_2_IRQ); //only on if you want to see one conversion at a time
     
-    //ADC2------------------------------------------------------------------------------------
-    // power on ADC2
+    //ADC3------------------------------------------------------------------------------------
+    // power on ADC3
     
-    ADC2_CR |= ADC_CR_ADEN;
+    ADC3_CR |= ADC_CR_ADEN;
     
     
 	/* Wait for ADC1 starting up. ----------------------------------------------------------*/
-    while ((ADC1_ISR & ADC_ISR_ADRDY) & (ADC2_ISR & ADC_ISR_ADRDY)  == 0){
+    while ((ADC1_ISR & ADC_ISR_ADRDY) & (ADC3_ISR & ADC_ISR_ADRDY)  == 0){
         gpio_port_write(GPIOE, 0x9900);
     }
     ADC1_ISR = ADC_ISR_ADRDY;
     
-    /* Wait for ADC2 starting up. ----------------------------------------------------------*/
+    /* Wait for ADC3 starting up. ----------------------------------------------------------*/
     /*
-    while ((ADC2_ISR & ADC_ISR_ADRDY) == 0){
+    while ((ADC3_ISR & ADC_ISR_ADRDY) == 0){
         gpio_port_write(GPIOE, 0xF100);
     }
     */
     gpio_port_write(GPIOE, 0x8800);
     
-    ADC2_ISR = ADC_ISR_ADRDY;
+    ADC3_ISR = ADC_ISR_ADRDY;
     
     
 
