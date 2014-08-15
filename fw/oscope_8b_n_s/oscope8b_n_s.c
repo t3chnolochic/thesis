@@ -64,9 +64,11 @@ static usbd_device *usb_device;
 #define TOT           (16) //24 - half 1MSPS, 40 - half 600kHz 8 - half of 3MSPS but use 16
 
 static int sample_chunk_per_frame =0;
+static int ans = 0;
 static uint16_t adc_state = 0;
 static uint16_t leds = 0;
 static uint8_t trig[62] = {0};
+static uint8_t window = GELS;
 //static uint32_t old = 0x8000;
 
 // number of phase offsets to run through
@@ -106,7 +108,7 @@ void dma1_channel1_isr(void) {
         
         dma_clear_interrupt_flags(DMA1, 1, DMA_TCIF);
         
-        if (frame < GELS) {
+        if (frame < window) {
             
             
             DMA1_CCR1 &= ~DMA_CCR_EN; //needs to be off to change DMA1_CNDTR1
@@ -128,7 +130,7 @@ void dma1_channel1_isr(void) {
             ADC3_CR |= ADC_CR_ADSTART;
             
             while ((ADC3_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
-                gpio_port_write(GPIOE, 0xFF00); //bit has been set
+                //gpio_port_write(GPIOE, 0xFF00); //bit has been set
             }
             ADC3_ISR |= ADC_ISR_EOC;
             ADC3_ISR |= ADC_ISR_EOS;
@@ -144,12 +146,11 @@ void dma1_channel1_isr(void) {
             ADC3_CR |= ADC_CR_ADSTART;
             
             while ((ADC3_ISR & ADC_ISR_EOS) == 0){ //try ADC_ISR_EOS next
-                gpio_port_write(GPIOE, 0xFF00); //bit has been set
+                //gpio_port_write(GPIOE, 0xFF00); //bit has been set
             }
             ADC3_ISR |= ADC_ISR_EOC;
             ADC3_ISR |= ADC_ISR_EOS;
             trig[frame] = ADC3_DR;
-            
             
             frame = 0;
             sample_chunk_per_frame = 0;
@@ -199,7 +200,7 @@ void adc1_2_isr(void) {
 #if 0 //use this to avoid DMA use ADC interrupt as pseudo-DMA
         if (adc_state == (ADC_SAMPLES)-1) {
             leds = leds+0x0100;
-            gpio_port_write(GPIOE, leds);
+            //gpio_port_write(GPIOE, leds);
             adc_samples[adc_state] = ADC1_DR;
             adc_state = 0;
             sample_chunk_per_frame = 0;
@@ -351,7 +352,7 @@ static void adc_setup(void) {
     
     ADC3_CR |= ADC_CR_ADCAL; //single ended BROKEN IDK WHY
     while ((ADC3_CR & ADC_CR_ADCAL) != 0) {
-        gpio_port_write(GPIOE, 0x5500);
+        //gpio_port_write(GPIOE, 0x5500);
     }
     
     //ADC1------------------------------------------------------------------------------------
@@ -367,7 +368,7 @@ static void adc_setup(void) {
     
 	/* Wait for ADC1 starting up. ----------------------------------------------------------*/
     while ((ADC1_ISR & ADC_ISR_ADRDY) & (ADC3_ISR & ADC_ISR_ADRDY)  == 0){
-        gpio_port_write(GPIOE, 0x9900);
+        //gpio_port_write(GPIOE, 0x9900);
     }
     ADC1_ISR = ADC_ISR_ADRDY;
     
@@ -377,7 +378,7 @@ static void adc_setup(void) {
         gpio_port_write(GPIOE, 0xF100);
     }
     */
-    gpio_port_write(GPIOE, 0x8800);
+    //gpio_port_write(GPIOE, 0x8800);
     
     ADC3_ISR = ADC_ISR_ADRDY;
     
@@ -414,8 +415,36 @@ static void cdcacm_data_rx_cb(usbd_device *usbd_dev, uint8_t ep) {
 	(void)usbd_dev;
     
 	char buf[64];
-	usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+    ans = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
     
+    gpio_port_write(GPIOE, buf[0]<<8);
+    
+    if (buf[0] == 0x6E){ //ans == "n"
+        DMA1_CCR1 &= ~DMA_CCR_EN;
+        DMA1_CNDTR1 = num_samples_per_frame * GELS;
+        window = 1;
+        DMA1_CCR1 |= DMA_CCR_EN;
+        
+        TIM3_SMCR &= ~TIM_SMCR_SMS_TM; //turn off trigger
+        TIM3_SMCR |= TIM_SMCR_SMS_OFF;
+        TIM3_CR1 |= TIM_CR1_CEN;
+        
+        //gpio_port_write(GPIOE, 0xFF00);
+        //leds = leds + 0x0100;
+        
+    }
+    
+    else if (buf[0] == 0x73){ //ans = "s"
+        DMA1_CCR1 &= ~DMA_CCR_EN;
+        DMA1_CNDTR1 = num_samples_per_frame;
+        window = GELS;
+        DMA1_CCR1 |= DMA_CCR_EN;
+        //gpio_port_write(GPIOE, 0x5500);
+    }
+    
+    else{
+        //gpio_port_write(GPIOE, 0xFF00);
+    }
     // TODO: phase adjustment setting
     //num_frames = 1;
     
@@ -432,7 +461,6 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
 	(void)ep;
 	(void)usbd_dev;
     TIM3_SMCR &= ~TIM_SMCR_SMS_TM;
-    TIM3_SMCR |= TIM_SMCR_SMS_OFF;
     
     usb_ready_to_send = 1;
     sample_chunk_per_frame = sample_chunk_per_frame + 1;
@@ -474,15 +502,15 @@ static void cdcacm_data_tx_cb(usbd_device *usbd_dev, uint8_t ep) {
         ADC1_CR |= ADC_CR_ADSTART;
         
         
-        gpio_port_write(GPIOE, 0x8800);
+        //gpio_port_write(GPIOE, 0x8800);
         
         
     }
     
     else {
         //usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(zeros[62]), 62);
-        gpio_port_write(GPIOE, leds);
-        leds = leds + 0x0100;
+        //gpio_port_write(GPIOE, leds);
+        //leds = leds + 0x0100;
         usbd_ep_write_packet(usb_device,0x82, (uint8_t *) &(adc_samples[62*(sample_chunk_per_frame-1)]), 62);
 
     }
