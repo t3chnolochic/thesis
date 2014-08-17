@@ -38,8 +38,9 @@ if __name__ == "__main__":
     frames = [];
 
     usbfriend = serial.Serial(sys.argv[1]);
-    
-    usbfriend.write('x');
+    usbfriend.write(sys.argv[2])
+
+    #usbfriend.write('n');
     data = usbfriend.read(frame_size * bytes_per_sample);
     
     for frame_idx in xrange(gels):

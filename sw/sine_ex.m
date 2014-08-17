@@ -3,7 +3,7 @@ addpath('/Users/jinstone/Desktop/stmsetup/thesis/sw/sinc_interp/');
 
 samp = 437E3;
 gold = 0.5 * ( 1 + sqrt(5) )
-len = 10000E-6;
+len = 1000E-6;
 t1=[0:1/samp:len];
 t1a=[0:1/(5*samp):len];
 t2=[0:1/(100E6):len];
